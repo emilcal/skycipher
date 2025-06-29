@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Cloud-Driven Poem Shuffler</title>
+  <title>CLOUD INDEX</title>
   <style>
-    body { font-family: Georgia, serif; max-width: 42em; margin: 2rem auto; line-height: 1.5; }
-    header { margin-bottom: 1.5rem; }
-    p { margin: 1.1em 0; }
-    .meta { font-size: .9em; color: #555; }
+    body   { font-family: Georgia,serif; max-width:42em; margin:2rem auto; line-height:1.5; }
+    header { margin-bottom:1.5rem; }
+    p      { margin:1.1em 0; }
+    .meta  { font-size:.9em; color:#555; }
   </style>
 </head>
 
@@ -22,60 +22,75 @@
 
   <div id="output">Loading…</div>
 
+  <!-- ─────────────  ONE script block with everything  ───────────── -->
   <script>
-  //  ►► 1.  CONFIG  ◄◄
-  const API_KEY = 'ced49aed1426b9f481a92bd0a9854e5c';           // ← put your key here
-  const LAT     = 533.8803;                             // London example
-  const LON     = 151.1840;
+  /*──── CONFIG ─────────────────────────────────────────*/
+  const API_KEY      = 'ced49aed1426b9f481a92bd0a9854e5c';   // ← your OpenWeather key
+  const LOCAL_POEM   = 'poem.txt';                           // raw poem file
+  const DEFAULT_CITY = 'London';                             // fallback prompt text
 
-  //  ►► 2.  HELPERS  ◄◄
-  const clamp    = (n, min, max) => Math.max(min, Math.min(max, n));
+  /*──── HELPERS ────────────────────────────────────────*/
+  const clamp      = (n,min,max)=>Math.max(min,Math.min(max,n));
+  const chunkSize  = pct => clamp( Math.round(80 - 0.7*pct), 10, 70 );
+  const chunkWords = (txt,n)=>txt.trim().split(/\s+/)
+        .reduce((a,w,i)=>(a[Math.floor(i/n)]??=[]).push(w)&&a,[])
+        .map(a=>a.join(' '));
+  const shuffle    = a=>{for(let i=a.length;i;){const j=~~(Math.random()*i--);[a[i],a[j]]=[a[j],a[i]];}return a;};
 
-  // map cloud % → chunk size (10–70 words)
-  const chunkFromClouds = cloudsPct =>
-        clamp( Math.round( 80 - 0.7 * cloudsPct ), 10, 70 );
+  /*──── GEOLOCATION LOGIC ─────────────────────────────*/
+  async function getUserCoords(){
+    /* 1️⃣ browser geo (https or localhost) */
+    try{
+      const pos = await new Promise(
+        (ok,err)=>navigator.geolocation
+          ? navigator.geolocation.getCurrentPosition(ok,err,{timeout:8000})
+          : err('no-geo')
+      );
+      return {lat:pos.coords.latitude, lon:pos.coords.longitude, label:'your device'};
+    }catch{/* ignored */}
 
-  const chunkWords = (text, size) =>
-    text.trim().split(/\s+/)
-              .reduce((arr, w, i) => {
-                const idx = Math.floor(i / size);
-                (arr[idx] ||= []).push(w);
-                return arr;
-              }, [])
-              .map(a => a.join(' '));
+    /* 2️⃣ IP lookup (ipapi.co allows CORS) */
+    try{
+      const ip = await fetch('https://ipapi.co/json/').then(r=>r.json());
+      return {lat:ip.latitude, lon:ip.longitude, label:ip.city||'your region'};
+    }catch{/* ignored */}
 
-  const shuffle = (arr) => {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  };
+    /* 3️⃣ manual prompt */
+    const city = prompt('City for cloud lookup?', DEFAULT_CITY) || DEFAULT_CITY;
+    return {city, label:city};
+  }
 
-  //  ►► 3.  MAIN  ◄◄
-  Promise.all([
-    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&appid=${API_KEY}`)
-      .then(r => r.json()),
-    fetch('poem.txt').then(r => r.text())
-  ])
-  .then(([weather, poem]) => {
-      const clouds = weather.clouds?.all ?? 50;            // default 50 %
-      const size   = chunkFromClouds(clouds);
+  /*──── MAIN ─────────────────────────────────────────*/
+  (async()=>{
+    const loc      = await getUserCoords();
 
-      // UI meta
-      document.getElementById('city').textContent   = weather.name || 'unknown place';
-      document.getElementById('clouds').textContent = clouds;
-      document.getElementById('chunk').textContent  = size;
+    const wURL = loc.city
+      ? `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(loc.city)}&appid=${API_KEY}`
+      : `https://api.openweathermap.org/data/2.5/weather?lat=${loc.lat}&lon=${loc.lon}&appid=${API_KEY}`;
 
-      // slice, shuffle, display
-      const slabs   = shuffle( chunkWords(poem, size) );
-      const html    = slabs.map(s => `<p>${s}</p>`).join('');
-      document.getElementById('output').innerHTML = html;
-  })
-  .catch(err => {
-      document.getElementById('output').textContent =
-        'Error: ' + err + '\n(Try running a local server so fetch() works.)';
+    const [weather, poem] = await Promise.all([
+      fetch(wURL).then(r=>r.json()),
+      fetch(LOCAL_POEM).then(r=>r.text())
+    ]);
+
+    const clouds = weather.clouds?.all ?? 50;
+    const size   = chunkSize(clouds);
+
+    /* meta */
+    document.getElementById('city').textContent   = loc.label;
+    document.getElementById('clouds').textContent = clouds;
+    document.getElementById('chunk').textContent  = size;
+
+    /* slice / shuffle / render */
+    document.getElementById('output').innerHTML =
+      shuffle(chunkWords(poem,size)).map(p=>`<p>${p}</p>`).join('');
+  })().catch(err=>{
+    document.getElementById('output').textContent =
+      'Error: '+err+'\n(Serve over https or localhost so fetch() works.)';
   });
   </script>
+
+  <!-- (Optional) sky-background loader; comment out if unused -->
+  <!-- <script src="background.js"></script> -->
 </body>
 </html>
