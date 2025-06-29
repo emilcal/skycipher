@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cloud-Driven Poem Shuffler</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 42em; margin: 2rem auto; line-height: 1.5; }
+    header { margin-bottom: 1.5rem; }
+    p { margin: 1.1em 0; }
+    .meta { font-size: .9em; color: #555; }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Shuffled Poem</h1>
+    <div class="meta">
+      <strong id="city">…</strong> – cloud cover <strong id="clouds">…</strong>%  
+      ➜ chunk size <strong id="chunk">…</strong> words
+    </div>
+  </header>
+
+  <div id="output">Loading…</div>
+
+  <script>
+  //  ►► 1.  CONFIG  ◄◄
+  const API_KEY = 'ced49aed1426b9f481a92bd0a9854e5c';           // ← put your key here
+  const LAT     = 533.8803;                             // London example
+  const LON     = 151.1840;
+
+  //  ►► 2.  HELPERS  ◄◄
+  const clamp    = (n, min, max) => Math.max(min, Math.min(max, n));
+
+  // map cloud % → chunk size (10–70 words)
+  const chunkFromClouds = cloudsPct =>
+        clamp( Math.round( 80 - 0.7 * cloudsPct ), 10, 70 );
+
+  const chunkWords = (text, size) =>
+    text.trim().split(/\s+/)
+              .reduce((arr, w, i) => {
+                const idx = Math.floor(i / size);
+                (arr[idx] ||= []).push(w);
+                return arr;
+              }, [])
+              .map(a => a.join(' '));
+
+  const shuffle = (arr) => {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  //  ►► 3.  MAIN  ◄◄
+  Promise.all([
+    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&appid=${API_KEY}`)
+      .then(r => r.json()),
+    fetch('poem.txt').then(r => r.text())
+  ])
+  .then(([weather, poem]) => {
+      const clouds = weather.clouds?.all ?? 50;            // default 50 %
+      const size   = chunkFromClouds(clouds);
+
+      // UI meta
+      document.getElementById('city').textContent   = weather.name || 'unknown place';
+      document.getElementById('clouds').textContent = clouds;
+      document.getElementById('chunk').textContent  = size;
+
+      // slice, shuffle, display
+      const slabs   = shuffle( chunkWords(poem, size) );
+      const html    = slabs.map(s => `<p>${s}</p>`).join('');
+      document.getElementById('output').innerHTML = html;
+  })
+  .catch(err => {
+      document.getElementById('output').textContent =
+        'Error: ' + err + '\n(Try running a local server so fetch() works.)';
+  });
+  </script>
+</body>
+</html>
