@@ -24,71 +24,71 @@
 
   <!-- ─────────────  ONE script block with everything  ───────────── -->
   <script>
-  /*──── CONFIG ─────────────────────────────────────────*/
-  const API_KEY      = 'ced49aed1426b9f481a92bd0a9854e5c';   // ← your OpenWeather key
-  const LOCAL_POEM   = 'poem.txt';                           // raw poem file
-  const DEFAULT_CITY = 'London';                             // fallback prompt text
+/*──── CONFIG ─────────────────────────────────────────*/
+const API_KEY      = 'YOUR_OPENWEATHER_KEY';   // ← replace once
+const LOCAL_POEM   = 'poem.txt';               // raw poem
+const DEFAULT_CITY = 'London';                 // last-ditch prompt text
 
-  /*──── HELPERS ────────────────────────────────────────*/
-  const clamp      = (n,min,max)=>Math.max(min,Math.min(max,n));
-  const chunkSize  = pct => clamp( Math.round(80 - 0.7*pct), 10, 70 );
-  const chunkWords = (txt,n)=>txt.trim().split(/\s+/)
-        .reduce((a,w,i)=>(a[Math.floor(i/n)]??=[]).push(w)&&a,[])
-        .map(a=>a.join(' '));
-  const shuffle    = a=>{for(let i=a.length;i;){const j=~~(Math.random()*i--);[a[i],a[j]]=[a[j],a[i]];}return a;};
+/*──── HELPERS ────────────────────────────────────────*/
+const clamp      = (n,min,max)=>Math.max(min,Math.min(max,n));
+const chunkSize  = p => clamp(Math.round(80 - 0.7*p),10,70);
+const chunkWords = (txt,n)=>txt.trim().split(/\s+/)
+      .reduce((a,w,i)=>(a[Math.floor(i/n)]??=[]).push(w)&&a,[])
+      .map(a=>a.join(' '));
+const shuffle    = a=>{for(let i=a.length;i;){const j=~~(Math.random()*i--);[a[i],a[j]]=[a[j],a[i]];}return a;};
 
-  /*──── GEOLOCATION LOGIC ─────────────────────────────*/
-  async function getUserCoords(){
-    /* 1️⃣ browser geo (https or localhost) */
-    try{
-      const pos = await new Promise(
-        (ok,err)=>navigator.geolocation
-          ? navigator.geolocation.getCurrentPosition(ok,err,{timeout:8000})
-          : err('no-geo')
-      );
-      return {lat:pos.coords.latitude, lon:pos.coords.longitude, label:'your device'};
-    }catch{/* ignored */}
+/*──── GEOLOCATION ───────────────────────────────────*/
+async function getUserCoords(){
+  /* 1️⃣ Browser geolocation (https / localhost only) */
+  try{
+    const pos = await new Promise((ok,err)=>
+      navigator.geolocation ?
+        navigator.geolocation.getCurrentPosition(ok,err,{timeout:8e3})
+        : err('no-geo'));
+    return {lat:pos.coords.latitude, lon:pos.coords.longitude,
+            label:'your device'};
+  }catch{/* ignored */}
 
-    /* 2️⃣ IP lookup (ipapi.co allows CORS) */
-    try{
-      const ip = await fetch('https://ipapi.co/json/').then(r=>r.json());
-      return {lat:ip.latitude, lon:ip.longitude, label:ip.city||'your region'};
-    }catch{/* ignored */}
+  /* 2️⃣ IP lookup (ipapi has CORS) */
+  try{
+    const ip = await fetch('https://ipapi.co/json/').then(r=>r.json());
+    return {lat:ip.latitude, lon:ip.longitude, label:ip.city||'your region'};
+  }catch{/* ignored */}
 
-    /* 3️⃣ manual prompt */
-    const city = prompt('City for cloud lookup?', DEFAULT_CITY) || DEFAULT_CITY;
-    return {city, label:city};
-  }
+  /* 3️⃣ Manual city prompt */
+  const city = prompt('City for cloud lookup?', DEFAULT_CITY) || DEFAULT_CITY;
+  return {city, label:city};
+}
 
-  /*──── MAIN ─────────────────────────────────────────*/
-  (async()=>{
-    const loc      = await getUserCoords();
-
-    const wURL = loc.city
+/*──── MAIN ──────────────────────────────────────────*/
+(async()=>{
+  const loc   = await getUserCoords();
+  const wURL  = loc.city
       ? `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(loc.city)}&appid=${API_KEY}`
       : `https://api.openweathermap.org/data/2.5/weather?lat=${loc.lat}&lon=${loc.lon}&appid=${API_KEY}`;
 
-    const [weather, poem] = await Promise.all([
-      fetch(wURL).then(r=>r.json()),
-      fetch(LOCAL_POEM).then(r=>r.text())
-    ]);
+  const [weather, poem] = await Promise.all([
+        fetch(wURL).then(r=>r.json()),
+        fetch(LOCAL_POEM).then(r=>r.text())
+  ]);
 
-    const clouds = weather.clouds?.all ?? 50;
-    const size   = chunkSize(clouds);
+  const clouds = weather.clouds?.all ?? 50;
+  const size   = chunkSize(clouds);
 
-    /* meta */
-    document.getElementById('city').textContent   = loc.label;
-    document.getElementById('clouds').textContent = clouds;
-    document.getElementById('chunk').textContent  = size;
+  /*— update meta line —*/
+  document.getElementById('city').textContent   = loc.label;
+  document.getElementById('clouds').textContent = clouds;
+  document.getElementById('chunk').textContent  = size;
 
-    /* slice / shuffle / render */
-    document.getElementById('output').innerHTML =
+  /*— slice / shuffle / display —*/
+  document.getElementById('output').innerHTML =
       shuffle(chunkWords(poem,size)).map(p=>`<p>${p}</p>`).join('');
-  })().catch(err=>{
-    document.getElementById('output').textContent =
-      'Error: '+err+'\n(Serve over https or localhost so fetch() works.)';
-  });
-  </script>
+})().catch(err=>{
+  document.getElementById('output').textContent =
+      'Error: '+err+'\n(Try https / localhost so geolocation works.)';
+});
+</script>
+
 
   <!-- (Optional) sky-background loader; comment out if unused -->
   <!-- <script src="background.js"></script> -->
